@@ -1,0 +1,24 @@
+{
+  "sources": [
+    {
+      "name": "机器之心",
+      "url": "https://www.jiqizhixin.com/rss",
+      "category": "综合"
+    },
+    {
+      "name": "量子位",
+      "url": "https://www.qbitai.com/rss",
+      "category": "综合"
+    },
+    {
+      "name": "AI科技评论",
+      "url": "https://www.leiphone.com/category/ai/feed",
+      "category": "深度"
+    },
+    {
+      "name": "OpenAI Blog",
+      "url": "https://openai.com/blog/rss.xml",
+      "category": "官方"
+    }
+  ]
+}
