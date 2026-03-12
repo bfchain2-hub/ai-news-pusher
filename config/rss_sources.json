@@ -16,8 +16,28 @@
       "category": "深度"
     },
     {
+      "name": "新华网（科技）",
+      "url": "http://www.xinhuanet.com/tech/news_tech.xml",
+      "category": "权威媒体"
+    },
+    {
+      "name": "人民网（科技）",
+      "url": "http://www.people.com.cn/rss/scitech.xml",
+      "category": "权威媒体"
+    },
+    {
       "name": "OpenAI Blog",
       "url": "https://openai.com/blog/rss.xml",
+      "category": "官方"
+    },
+    {
+      "name": "Google AI Blog",
+      "url": "https://ai.googleblog.com/feeds/posts/default?alt=rss",
+      "category": "官方"
+    },
+    {
+      "name": "Microsoft AI Blog",
+      "url": "https://www.microsoft.com/en-us/ai/blog/content-type/events/feed",
       "category": "官方"
     },
     {

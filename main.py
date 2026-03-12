@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 from src.content_summarizer import ContentSummarizer
 from src.rss_fetcher import RSSFetcher
+from src.x_fetcher import XFetcher
 from src.wechat_pusher import WechatPusher
 
 
@@ -78,6 +79,7 @@ async def run() -> None:
     openai_api_key = os.getenv("OPENAI_API_KEY")
     openai_base_url = os.getenv("OPENAI_BASE_URL")
     server_chan_key = os.getenv("SERVER_CHAN_KEY")
+    x_bearer_token = os.getenv("X_BEARER_TOKEN")
 
     if not openai_api_key:
         logger.error("环境变量 OPENAI_API_KEY 未配置")
@@ -95,12 +97,20 @@ async def run() -> None:
     fetcher = RSSFetcher()
     summarizer = ContentSummarizer(api_key=openai_api_key, base_url=openai_base_url)
     pusher = WechatPusher(send_key=server_chan_key)
+    x_fetcher: XFetcher | None = None
+    if x_bearer_token:
+        x_fetcher = XFetcher(bearer_token=x_bearer_token)
 
     logger.info("开始抓取RSS资讯...")
     articles = await fetcher.fetch_all(sources)
 
+    if x_fetcher is not None:
+        logger.info("检测到 X_BEARER_TOKEN，开始抓取 X 热门帖子...")
+        x_articles = await x_fetcher.fetch_top_ai_posts(max_items=20)
+        articles.extend(x_articles)
+
     if not articles:
-        logger.warning("未从RSS源中获取到任何文章，将仍然推送一条提示消息。")
+        logger.warning("未从RSS源和 X 中获取到任何文章，将仍然推送一条提示消息。")
         await pusher.push([])
         return
 
@@ -116,7 +126,7 @@ async def run() -> None:
         return
 
     logger.info("开始调用GPT生成新闻摘要...")
-    summaries = await summarizer.summarize(articles)
+    summaries = await summarizer.summarize(articles, max_items=15)
 
     if not summaries:
         logger.warning("GPT未返回有效摘要，将推送原始标题列表。")
@@ -128,7 +138,7 @@ async def run() -> None:
                 "source": a.source_name,
                 "category": a.category,
             }
-            for a in articles[:5]
+            for a in articles[:15]
         ]
         await pusher.push(fallback_items)
         return

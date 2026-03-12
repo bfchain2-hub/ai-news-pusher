@@ -142,6 +142,7 @@ cp .env.example .env
 OPENAI_API_KEY=你的_openai_api_key
 OPENAI_BASE_URL=https://api.openai.com/v1   # 如使用官方，保持默认即可
 SERVER_CHAN_KEY=你的_server_chan_sendkey
+X_BEARER_TOKEN=你的_x_bearer_token_可选
 ```
 
 5. 手动运行一次脚本测试：
@@ -166,6 +167,7 @@ python main.py
 - `OPENAI_API_KEY`：你的 OpenAI API Key
 - `OPENAI_BASE_URL`：`https://api.openai.com/v1`（如果使用兼容 OpenAI 的第三方服务，可以替换为对应 Base URL；如不需要可留空，不创建也可以）
 - `SERVER_CHAN_KEY`：你的 Server酱 SendKey
+- `X_BEARER_TOKEN`（可选）：你的 X(Twitter) API Bearer Token，用于抓取 X 上 AI 相关热门帖子
 
 #### 2. 启用 GitHub Actions
 
@@ -179,6 +181,18 @@ python main.py
 1. 在 `Actions` 页面中选择 `AI News Daily Push` workflow。
 2. 点击右侧的「Run workflow」，选择分支后执行。
 3. 等待几分钟，若日志中显示 `Server酱推送成功`，并在微信中收到推送，则说明部署成功。
+
+---
+
+### 更新与扩展（最简单方式）
+
+当你想扩展为「国内外 AI 大事件 / 新闻资讯」或想调整 RSS 源时，推荐直接在 GitHub 网页上改配置，无需复杂部署：
+
+1. 打开仓库里的 `config/rss_sources.json` → 点击铅笔编辑 → 保存提交（Commit）。
+2. 打开 `Actions` → `AI News Daily Push` → 点击 `Run workflow` 手动跑一次验证。
+3. 以后每天北京时间 8:00 的定时任务会自动使用最新代码和最新 RSS 配置。
+
+如果你在本地改了代码并推送到 GitHub：只要 `git push` 成功，Actions 下次运行也会自动用新版本。
 
 ---
 
