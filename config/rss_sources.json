@@ -19,6 +19,21 @@
       "name": "OpenAI Blog",
       "url": "https://openai.com/blog/rss.xml",
       "category": "官方"
+    },
+    {
+      "name": "Planet AI（国际聚合）",
+      "url": "https://planet-ai.net/rss.xml",
+      "category": "国际聚合"
+    },
+    {
+      "name": "The Verge（科技综合）",
+      "url": "https://link.theverge.com/rss",
+      "category": "国际"
+    },
+    {
+      "name": "36氪（科技综合）",
+      "url": "https://36kr.com/feed",
+      "category": "国内"
     }
   ]
 }
