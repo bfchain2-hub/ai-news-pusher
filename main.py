@@ -7,16 +7,18 @@ from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 
+from src.article_filter import filter_by_ai_keywords
 from src.content_summarizer import ContentSummarizer
 from src.rss_fetcher import RSSFetcher
-from src.x_fetcher import XFetcher
 from src.wechat_pusher import WechatPusher
+from src.x_fetcher import XFetcher
 
 
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_DIR = BASE_DIR / "config"
 CACHE_DIR = BASE_DIR / "cache"
 CACHE_FILE = CACHE_DIR / "last_articles.json"
+PUSH_OPTIONS_PATH = CONFIG_DIR / "push_options.json"
 
 
 def setup_logging() -> None:
@@ -39,6 +41,18 @@ def load_config() -> List[Dict[str, Any]]:
         raise ValueError("rss_sources.json 格式错误: 'sources' 必须是列表")
 
     return sources
+
+
+def load_push_options() -> Dict[str, Any]:
+    """加载推送选项：AI 关键词、X 大佬账号、最少 X 条数、总条数。"""
+    if not PUSH_OPTIONS_PATH.exists():
+        return {}
+    try:
+        with PUSH_OPTIONS_PATH.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def load_env() -> None:
@@ -94,6 +108,16 @@ async def run() -> None:
         logger.error("加载RSS配置失败: %s", exc)
         return
 
+    push_options = load_push_options()
+    max_items = int(push_options.get("max_items", 15))
+    min_x_items = int(push_options.get("min_x_items", 2))
+    ai_keywords = push_options.get("ai_keywords")
+    if ai_keywords is not None and not isinstance(ai_keywords, list):
+        ai_keywords = None
+    x_influencer_handles = push_options.get("x_influencer_handles")
+    if x_influencer_handles is not None and not isinstance(x_influencer_handles, list):
+        x_influencer_handles = None
+
     fetcher = RSSFetcher()
     summarizer = ContentSummarizer(api_key=openai_api_key, base_url=openai_base_url)
     pusher = WechatPusher(send_key=server_chan_key)
@@ -105,12 +129,22 @@ async def run() -> None:
     articles = await fetcher.fetch_all(sources)
 
     if x_fetcher is not None:
-        logger.info("检测到 X_BEARER_TOKEN，开始抓取 X 热门帖子...")
-        x_articles = await x_fetcher.fetch_top_ai_posts(max_items=20)
+        logger.info("检测到 X_BEARER_TOKEN，开始抓取 X 热门帖子（含 AI 圈大佬）...")
+        x_articles = await x_fetcher.fetch_top_ai_posts(
+            max_items=25,
+            influencer_handles=x_influencer_handles,
+        )
         articles.extend(x_articles)
 
     if not articles:
         logger.warning("未从RSS源和 X 中获取到任何文章，将仍然推送一条提示消息。")
+        await pusher.push([])
+        return
+
+    # 只保留标题/摘要中包含 AI 关键词的文章，确保推送内容与 AI 强相关
+    articles = filter_by_ai_keywords(articles, ai_keywords)
+    if not articles:
+        logger.warning("按 AI 关键词过滤后无剩余文章，推送空日报。")
         await pusher.push([])
         return
 
@@ -125,20 +159,24 @@ async def run() -> None:
         await pusher.push(cached_items)
         return
 
-    logger.info("开始调用GPT生成新闻摘要...")
-    summaries = await summarizer.summarize(articles, max_items=15)
+    logger.info("开始调用GPT生成新闻摘要（按质量与热度精选 %d 条，其中至少 %d 条来自 X）...", max_items, min_x_items)
+    summaries = await summarizer.summarize(
+        articles,
+        max_items=max_items,
+        min_x_items=min_x_items,
+    )
 
     if not summaries:
         logger.warning("GPT未返回有效摘要，将推送原始标题列表。")
         fallback_items = [
             {
                 "title": a.title,
-                "summary": a.summary[:80],
+                "summary": (a.summary or "")[:80],
                 "link": a.link,
                 "source": a.source_name,
                 "category": a.category,
             }
-            for a in articles[:15]
+            for a in articles[:max_items]
         ]
         await pusher.push(fallback_items)
         return

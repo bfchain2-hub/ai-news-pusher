@@ -1,0 +1,33 @@
+{
+  "ai_keywords": [
+    "ai",
+    "大模型",
+    "算力",
+    "人工智能",
+    "机器学习",
+    "深度学习",
+    "LLM",
+    "GPT",
+    "生成式",
+    "神经网络",
+    "NLP",
+    "计算机视觉",
+    "AIGC",
+    "大语言模型",
+    "机器学习",
+    "智能体",
+    "Agent"
+  ],
+  "x_influencer_handles": [
+    "OpenAI",
+    "ylecun",
+    "kaboratory",
+    "sama",
+    "karpathy",
+    "AndrewYNg",
+    "goodfellow_ian",
+    "demishassabis"
+  ],
+  "min_x_items": 2,
+  "max_items": 15
+}

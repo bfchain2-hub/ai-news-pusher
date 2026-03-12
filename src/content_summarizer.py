@@ -22,18 +22,17 @@ class ContentSummarizer:
         self.client = AsyncOpenAI(**client_kwargs)
         self.model = model
 
-    async def summarize(self, articles: List[Article], max_items: int = 15) -> List[dict]:
-        """调用GPT接口，对文章进行重要性排序并生成简洁摘要。
+    async def summarize(
+        self,
+        articles: List[Article],
+        max_items: int = 15,
+        min_x_items: int = 2,
+    ) -> List[dict]:
+        """调用GPT接口，按质量与热度排序，精选 max_items 条，其中至少 min_x_items 条来自 X 平台。
 
         返回格式:
         [
-          {
-            "title": "...",
-            "summary": "...",
-            "link": "...",
-            "source": "...",
-            "category": "..."
-          },
+          { "title": "...", "summary": "...", "link": "...", "source": "...", "category": "..." },
           ...
         ]
         """
@@ -42,7 +41,7 @@ class ContentSummarizer:
             return []
 
         # 为避免 prompt 过长，只取最近的前 N 条文章作为候选
-        candidates = articles[:50]
+        candidates = articles[:60]
 
         items_text = []
         for idx, a in enumerate(candidates, start=1):
@@ -54,20 +53,33 @@ class ContentSummarizer:
                 f"链接: {a.link}\n"
             )
 
+        x_requirement = (
+            f"必须包含至少 {min_x_items} 条来源为「X 热门帖子」的内容（X 条目的摘要中带有点赞/转发/评论数，请按热度优先选取）。\n"
+            if min_x_items > 0
+            else ""
+        )
         system_prompt = (
-            "你是一个专业的AI新闻编辑，擅长从大量资讯中选出最重要、最值得关注的内容。\n"
-            "现在给你过去24小时内与人工智能相关的新闻列表，请你严格遵守以下要求：\n"
-            f"1) 从中选出最重要、最有代表性的 10-15 条（按重要性排序，优先“大事件/重要发布/政策监管/融资并购/产品更新/研究突破”）\n"
-            "2) 输出必须是【简体中文】；如原文标题/摘要为英文，请翻译成中文（保留专有名词/机构名可用英文）\n"
-            "3) 每条生成不超过 50 字的精炼中文摘要\n"
-            "4) 尽量覆盖不同来源和话题，不要只集中在某一家（例如 OpenAI）\n"
-            "5) 输出严格使用 JSON 数组格式，每个元素包含：title, summary, link, source, category 五个字段\n"
-            "6) 不要输出任何额外说明或文字，只输出 JSON 数组\n"
+            "你是一个专业的AI新闻编辑，只处理与人工智能（AI）直接相关的内容。\n"
+            "现在给你一批已初步筛选过的 AI 相关资讯（含新闻与 X 平台热帖），请你：\n"
+            f"1) 按「文章质量」和「热度」综合排序，精选出恰好 {max_items} 条，只选与 AI/大模型/算力/人工智能/机器学习/生成式等强相关的内容。\n"
+            + x_requirement
+            + "2) 输出必须是【简体中文】；英文标题/摘要请翻译成中文（专有名词可保留英文）。\n"
+            "3) 每条生成不超过 50 字的精炼中文摘要。\n"
+            "4) 尽量覆盖不同来源和话题。\n"
+            "5) 输出严格使用 JSON 数组格式，每个元素包含：title, summary, link, source, category 五个字段。\n"
+            "6) 不要输出任何额外说明，只输出 JSON 数组。\n"
         )
 
-        user_prompt = "以下是候选新闻列表：\n\n" + "\n".join(items_text)
+        user_prompt = (
+            "以下是候选列表（已过滤为 AI 相关），请按质量与热度排序后精选恰好 "
+            + str(max_items)
+            + " 条，且至少 "
+            + str(min_x_items)
+            + " 条来自「X 热门帖子」。\n\n"
+            + "\n".join(items_text)
+        )
 
-        result = await self._call_and_parse_json(system_prompt, user_prompt)
+        result = await self._call_and_parse_json(system_prompt, user_prompt, max_tokens=1200)
         if result is None:
             return []
         # 若模型输出出现明显英文占比过高，进行一次纠偏重试（只在必要时触发，控制成本）
@@ -101,7 +113,12 @@ class ContentSummarizer:
         logger.info("成功从GPT获得 %d 条摘要结果", len(cleaned))
         return cleaned
 
-    async def _call_and_parse_json(self, system_prompt: str, user_prompt: str) -> list | None:
+    async def _call_and_parse_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int = 1200,
+    ) -> list | None:
         try:
             resp = await self.client.chat.completions.create(
                 model=self.model,
@@ -110,7 +127,7 @@ class ContentSummarizer:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.3,
-                max_tokens=900,
+                max_tokens=max_tokens,
             )
         except Exception as exc:  # noqa: BLE001
             logger.error("调用OpenAI GPT接口失败: %s", exc)

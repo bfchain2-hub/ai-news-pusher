@@ -42,39 +42,33 @@ class XFetcher:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
-    async def fetch_top_ai_posts(self, max_items: int = 20) -> List[Article]:
-        """抓取最近24小时内 AI 相关的高热度帖子，并转换为 Article 列表。"""
-        if not self.bearer_token:
-            return []
-
+    async def _search_tweets(
+        self,
+        session: aiohttp.ClientSession,
+        query: str,
+    ) -> List[dict]:
+        """执行一次 search/recent 请求，返回 data 列表。"""
         url = f"{self.base_url}/2/tweets/search/recent"
-        # 关键词可以根据需要再调整
-        query = '("人工智能" OR AI OR "大模型" OR "生成式AI") -is:retweet'
         params = {
             "query": query,
-            "max_results": "100",  # 接口上限
+            "max_results": "100",
             "tweet.fields": "created_at,public_metrics,lang,author_id",
         }
-
-        headers = {
-            "Authorization": f"Bearer {self.bearer_token}",
-        }
-
-        timeout = aiohttp.ClientTimeout(total=self.timeout + 5)
         try:
-            async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-                async with session.get(url, params=params) as resp:
-                    if resp.status != 200:
-                        text = await resp.text()
-                        logger.error("获取 X 热帖失败，状态码=%s，响应=%s", resp.status, text)
-                        return []
-                    data = await resp.json()
+            async with session.get(url, params=params) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    logger.warning("X search 失败 status=%s: %s", resp.status, text[:200])
+                    return []
+                data = await resp.json()
+                return data.get("data") or []
         except Exception as exc:  # noqa: BLE001
-            logger.error("获取 X 热帖时发生异常: %s", exc)
+            logger.warning("X search 请求异常: %s", exc)
             return []
 
+    def _items_to_posts(self, items: List[dict]) -> List[XPost]:
+        """将 API 返回的 item 列表转为 XPost 列表，并过滤 24 小时内。"""
         posts: List[XPost] = []
-        items = data.get("data") or []
         now = datetime.now(timezone.utc)
         threshold = now - timedelta(days=1)
 
@@ -108,15 +102,53 @@ class XFetcher:
             except Exception:  # noqa: BLE001
                 continue
 
-        if not posts:
+        return posts
+
+    async def fetch_top_ai_posts(
+        self,
+        max_items: int = 25,
+        influencer_handles: List[str] | None = None,
+    ) -> List[Article]:
+        """抓取最近24小时内 AI 相关高热度帖子；若配置了 AI 圈大佬账号，会同时抓取其推文并按点赞/转发/评论排序。"""
+        if not self.bearer_token:
+            return []
+
+        headers = {"Authorization": f"Bearer {self.bearer_token}"}
+        timeout = aiohttp.ClientTimeout(total=self.timeout + 5)
+        seen_ids: set[str] = set()
+        all_posts: List[XPost] = []
+
+        # 1) 通用 AI 关键词搜索
+        query_main = '("人工智能" OR AI OR "大模型" OR "生成式AI" OR "LLM" OR "GPT") -is:retweet'
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+            items_main = await self._search_tweets(session, query_main)
+            for p in self._items_to_posts(items_main):
+                if p.id not in seen_ids:
+                    seen_ids.add(p.id)
+                    all_posts.append(p)
+
+            # 2) 可选：AI 大佬账号近期推文（带 AI 关键词以控制数量）
+            if influencer_handles:
+                # 每个 handle 只取字母数字下划线，避免注入
+                safe = [h.strip() for h in influencer_handles if h and h.strip().replace("_", "").isalnum()]
+                if safe:
+                    from_part = " OR ".join(f"from:{h}" for h in safe[:10])  # 最多 10 个，避免 query 过长
+                    query_influencers = f"({from_part}) (AI OR 大模型 OR 人工智能 OR GPT OR LLM) -is:retweet"
+                    items_infl = await self._search_tweets(session, query_influencers)
+                    for p in self._items_to_posts(items_infl):
+                        if p.id not in seen_ids:
+                            seen_ids.add(p.id)
+                            all_posts.append(p)
+
+        if not all_posts:
             logger.info("未从 X 获取到符合条件的帖子")
             return []
 
         def score(p: XPost) -> float:
             return p.like_count + p.retweet_count * 2 + p.quote_count * 1.5 + p.reply_count * 0.5
 
-        posts.sort(key=score, reverse=True)
-        top_posts = posts[:max_items]
+        all_posts.sort(key=score, reverse=True)
+        top_posts = all_posts[:max_items]
 
         articles: List[Article] = []
         for p in top_posts:
@@ -134,7 +166,7 @@ class XFetcher:
                 )
             )
 
-        logger.info("成功从 X 获取并转换 %d 条热门帖子", len(articles))
+        logger.info("成功从 X 获取并转换 %d 条热门帖子（含大佬账号）", len(articles))
         return articles
 
 

@@ -5,10 +5,12 @@
 ### 功能概览
 
 - **RSS 聚合**：从多个 AI 媒体和官方博客抓取 RSS 内容（标题、摘要、链接、发布时间等）。
-- **智能摘要**：调用 **GPT-4o-mini**，自动从候选文章中选出 **3–5 条最重要的新闻**，生成简洁中文摘要（每条不超过 50 字）。
+- **X 热帖与大佬推文**：可选接入 X(Twitter) API，抓取 AI 关键词相关热帖及指定 AI 圈大佬账号推文，按点赞/转发/评论排序。
+- **AI 关键词过滤**：推送前只保留标题或摘要中包含「ai、大模型、算力、人工智能、LLM、GPT」等关键词的内容，避免无关资讯。
+- **智能精选**：调用 **GPT-4o-mini** 按**质量与热度**排序，**精选 15 条**，且**至少 2 条来自 X 平台**，生成简洁中文摘要（每条不超过 50 字）。
 - **微信推送**：通过 **Server酱** 将整理好的「AI 日报」以 Markdown 格式推送到微信。
 - **定时任务**：使用 **GitHub Actions**，每天早上 **8:00（北京时间）** 自动执行。
-- **成本优化**：只调用一次 GPT，总结 3–5 条重点新闻，并带有简单缓存机制，预计花费约 **0.1–0.3 元/天**。
+- **成本优化**：单次 GPT 调用 + 简单缓存，预计约 **0.1–0.3 元/天**。
 
 ---
 
@@ -21,10 +23,13 @@ ai-news-pusher/
 │       └── daily_push.yml        # GitHub Actions 定时任务配置
 ├── src/
 │   ├── rss_fetcher.py            # RSS 抓取模块（异步）
-│   ├── content_summarizer.py     # GPT 摘要模块（异步）
-│   └── wechat_pusher.py          # Server酱微信推送模块（异步）
+│   ├── article_filter.py         # AI 关键词过滤
+│   ├── content_summarizer.py     # GPT 摘要与排序（异步）
+│   ├── wechat_pusher.py          # Server酱微信推送模块（异步）
+│   └── x_fetcher.py              # X 热帖与大佬推文抓取（可选）
 ├── config/
-│   └── rss_sources.json          # RSS 源配置
+│   ├── rss_sources.json          # RSS 源配置
+│   └── push_options.json         # 推送选项：AI 关键词、X 大佬账号、条数等
 ├── cache/
 │   └── last_articles.json        # 简单缓存（运行时自动生成）
 ├── main.py                       # 主入口脚本（调度各模块）
@@ -69,6 +74,23 @@ ai-news-pusher/
 ```
 
 你可以按同样格式添加更多 RSS 源。
+
+---
+
+### 推送选项（可选）
+
+配置文件：`config/push_options.json`
+
+用于控制「只推 AI 相关」「至少 2 条来自 X」「精选 15 条」等行为。若不存在则使用代码内默认值。
+
+| 字段 | 说明 | 默认 |
+|------|------|------|
+| `ai_keywords` | 推送前过滤：标题或摘要须包含其中任一关键词 | ai、大模型、算力、人工智能、LLM、GPT、生成式、AIGC、智能体 等 |
+| `x_influencer_handles` | X 上要关注的 AI 圈大佬账号（用户名列表） | OpenAI、ylecun、kaboratory、sama、karpathy 等 |
+| `min_x_items` | 最终 15 条中至少来自 X 的条数 | 2 |
+| `max_items` | 每日精选并推送的总条数 | 15 |
+
+修改后保存并推送到 GitHub，下次定时任务或手动 Run workflow 即生效。
 
 ---
 
